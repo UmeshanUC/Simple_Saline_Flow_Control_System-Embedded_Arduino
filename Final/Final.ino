@@ -35,6 +35,8 @@ void setup(){
   Serial.begin(115200);
   
   display.setBrightness(0x0f);
+
+  pinMode(8,INPUT);
   
 }
   
@@ -50,43 +52,19 @@ void loop(){
     Serial.println(customKey);
     data[0] = display.encodeDigit(keyNum);
   }
-    
+    // TM1637
     data[1] = display.encodeDigit(0);
     data[2] = display.encodeDigit(0);
     data[3] = display.encodeDigit(0);    
     display.setSegments(data);
 
-  // TM1637
-  /*if(customKey)
+  if(digitalRead(8)==LOW)
   {
-    if(customKey=='*' || customKey== '#')
-    {
-      keyNum = 0;
-    }
-    else
-    {
-      if(keyNum <= 999)
-      {
-        keyNum = (keyNum) + (int(customKey)-48);
-      }
-    }
-  }*/
-
-  //display.showNumberDec(keyNum);
-  /*display.setBrightness(0x0f);
-
-  uint8_t data[] = { 0x0, 0x0, 0x0, 0x0 };
-  display.setSegments(data);
-  display.showNumberDec(23, false, 2,1);
-  delay(TEST_DELAY);
+    Serial.print(0);
+  }  
+  else
+  {
+    Serial.print(1);
+  }
   
-  display.setSegments(data);
-  display.showNumberDec(153, false, 3, 1);
-  delay(TEST_DELAY);
-
-  display.setSegments(data);
-  for(int i=0; i<=500; i++)
-  {
-    display.showNumberDec(i);
-  }*/
 }
