@@ -1,27 +1,27 @@
 #include <Keypad.h>
 
 const byte ROWS = 4; 
-const byte COLS = 4; 
+const byte COLS = 3; 
 
 char hexaKeys[ROWS][COLS] = {
-  {'1', '2', '3', 'A'},
-  {'4', '5', '6', 'B'},
-  {'7', '8', '9', 'C'},
-  {'*', '0', '#', 'D'}
+  {'1', '2', '3'},
+  {'4', '5', '6'},
+  {'7', '8', '9'},
+  {'*', '0', '#'}
 };
 
-byte rowPins[ROWS] = {9, 8, 7, 6}; 
-byte colPins[COLS] = {5, 4, 3, 2}; 
+byte rowPins[ROWS] = {0, 1, 2, 3}; 
+byte colPins[COLS] = {5, 6, 7}; 
 
 Keypad customKeypad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS); 
 
 void setup(){
-  Serial.begin(9600);
+  Serial.begin(115200);
   
-  pinMode(13, OUTPUT);
+  /*pinMode(13, OUTPUT);
   pinMode(11, OUTPUT);
   pinMode(10, OUTPUT);
-  digitalWrite(13,HIGH);
+  digitalWrite(13,HIGH);*/
 }
   
 void loop(){
@@ -32,7 +32,7 @@ void loop(){
   }
   
   
-  if (customKey=='A'){
+  /*if (customKey=='A'){
    digitalWrite(11, HIGH);
    digitalWrite(10, LOW);
    delay(400); // Wait for 1000 millisecond(s)
@@ -40,5 +40,5 @@ void loop(){
    digitalWrite(11, LOW);
    digitalWrite(10, HIGH);
    delay(400); // Wait for 1000 millisecond(s)
-  }
+  }*/
 }
