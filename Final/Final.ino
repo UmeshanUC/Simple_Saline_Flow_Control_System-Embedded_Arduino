@@ -1,6 +1,7 @@
 #include <Keypad.h>
 #include <Arduino.h>
 #include <TM1637Display.h>
+#include <EEPROM.h>
 
 //// Display connection pins (Digital Pins)
 #define CLK 11
@@ -12,7 +13,6 @@
 #define READING_MODE 0
 #define SETTING_MODE 1
 
-#define USE_TIMER_1 true  // To use timer1 interrupt
 
 //// Prototypes
 void AppendToDisplay(uint8_t digit);
@@ -25,6 +25,9 @@ void AllFlashDisplay();
 void CheckOpState();
 void ClearDisplay();
 bool IsNumericChar(char character);
+void SaveDropSize(int val);
+void SaveRequiredRate(int val);
+
 
 
 TM1637Display display(CLK, DIO);
@@ -64,6 +67,13 @@ const uint8_t segAllZero[] = {
   SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,  // O
   SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F   // O
 };
+// Create ---- symbol
+const uint8_t segAllDash[] = {
+  SEG_G,  // -
+  SEG_G,  // -
+  SEG_G,  // -
+  SEG_G   // -
+};
 
 
 
@@ -87,7 +97,9 @@ void loop() {
 
 
   // Finally Display the value
-  if (currentDisplayValue != NULL) {
+  if (currentDisplayValue == NULL) {
+    display.setSegments(segAllDash);
+  } else {
     display.showNumberDec(currentDisplayValue);
   }
 }
@@ -134,8 +146,7 @@ void ChangeMode() {
   } else {
     opState = 0;
   }
-  // ClearDisplay();
-  Serial.println(opState);
+  ClearDisplay();
 }
 
 void AllFlashDisplay() {
@@ -175,7 +186,6 @@ bool IsNumericChar(char character) {
 void CheckOpState() {
   switch (opState) {
     case SETTING_MODE:
-      ZeroSlowFlashDisplay();
       if (customKey) {
         Serial.println(customKey);
         if (IsNumericChar(customKey)) {
@@ -185,7 +195,16 @@ void CheckOpState() {
       break;
 
     case READING_MODE:
-      AllFlashDisplay();
       break;
   }
+}
+
+// val <= 255
+void SaveDropSize(uint8_t size) {
+  EEPROM.put(0, size);
+}
+
+
+void SaveRequiredRate(float rate) {
+  EEPROM.put(1, rate);
 }
