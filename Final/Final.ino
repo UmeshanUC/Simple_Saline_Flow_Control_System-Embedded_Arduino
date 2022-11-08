@@ -4,18 +4,23 @@
 #include <Arduino.h>
 #include <TM1637Display.h>
 #include <EEPROM.h>
+#include "PID_v1.h"
 
 //// Display connection pins (Digital Pins)
-#define CLK 11
+#define CLK 12
 #define DIO 10
 
 #define FLASH_DELAY 100
+#define SENSING_DURATION 1
+#define SENSOR_PIN 13
+#define MORTOR_CLAMP_PIN 11
+#define MORTOR_RELEASE_PIN 3
+
 
 // Modes
 #define DROPSIZE_SETTING_MODE 0
 #define READING_MODE 1
 #define RATE_SETTING_MODE 2
-#define SENSING_DURATION 1
 
 
 //// Prototypes
@@ -41,6 +46,10 @@ void SetDropSize();
 void OnTicking();
 int CalFlowRate();
 void CheckSensor();
+void ControlActuator(int reqRate);
+void InitPins();
+
+
 
 TM1637Display display(CLK, DIO);
 
@@ -66,7 +75,7 @@ char hexaKeys[ROWS][COLS] = {
   { '*', '0', '#', 'D' }
 };
 
-byte rowPins[ROWS] = { 2, 3, 4, 5 };
+byte rowPins[ROWS] = { 0, 2, 4, 5 };
 byte colPins[COLS] = { 6, 7, 8, 9 };
 
 Keypad customKeypad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS);
@@ -103,7 +112,7 @@ const uint8_t segM1[] = {
 
 void setup() {
   Serial.begin(9600);
-
+  InitPins();
   // Timer Interrupt
   cli();
 
@@ -356,7 +365,8 @@ void SetDropSize() {
 }
 
 void OnTicking() {
-  CalFlowRate();
+  currentRate = CalFlowRate();
+  Serial.println(sensorCount);
   sensorCount = 0;  // Reset counter for sensor inputs
 }
 
@@ -367,9 +377,18 @@ int CalFlowRate() {
   return (rate);
 }
 
-void CheckSensor(){
-  if(digitalRead(12)== HIGH){
+void CheckSensor() {
+  if (digitalRead(SENSOR_PIN) == HIGH) {
     sensorCount++;
     delay(50);
-  }  
+    Serial.println(sensorCount);
+  }
+}
+
+void ControlActuator(int reqRate) {
+}
+
+void InitPins() {
+  pinMode(MORTOR_CLAMP_PIN, OUTPUT);
+  pinMode(MORTOR_RELEASE_PIN, OUTPUT);
 }
