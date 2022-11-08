@@ -46,8 +46,12 @@ void SetDropSize();
 void OnTicking();
 int CalFlowRate();
 void CheckSensor();
-void ControlActuator(int reqRate);
+void Control();
 void InitPins();
+void Actuate(int controlSignal);
+// void InitController();
+void MotorController(int contSig);
+
 
 
 
@@ -63,6 +67,19 @@ int dropSize = NULL;  // No. of drops/ml
 int requiredRate = NULL;
 int currentRate = 28;
 int sensorCount = 0;
+double Kp = 7;
+////
+
+
+// //PID Variables
+// double refSig;  // reference
+// double InputSig;
+// double ControlSig;  // Control Signal (Output)
+// //PID parameters
+// double Kp = 0, Ki = 10, Kd = 0;
+
+// // create PID instance
+// PID pidController(&InputSig, &ControlSig, &refSig, Kp, Ki, Kd, DIRECT);
 
 //// Keypad Variables
 const byte ROWS = 4;
@@ -113,6 +130,7 @@ const uint8_t segM1[] = {
 void setup() {
   Serial.begin(9600);
   InitPins();
+
   // Timer Interrupt
   cli();
 
@@ -136,7 +154,7 @@ void setup() {
   sei();  //allow interrupts
 
   /////////
-
+  // InitController();
   display.setBrightness(1);
   AllFlashDisplay();
   RecoverDropSize();
@@ -159,6 +177,11 @@ void loop() {
 
   CheckOpState();
   CheckSensor();
+
+  Actuate(requiredRate);
+
+
+  delay(50);
 }
 
 //ISR
@@ -218,7 +241,7 @@ void ChangeMode() {
     opState = 1;
   }
   OnChangeMode(prevOpState);
-  ClearDisplay();
+  // ClearDisplay();
 }
 
 void AllFlashDisplay() {
@@ -345,6 +368,7 @@ void RecoverDropSize() {
 void LogParameters() {
   Print("Operating State: ", opState);
   Print("Required Rate: ", requiredRate);
+  Print("Current Rate: ", currentRate);
   Print("Drop Size: ", dropSize);
 }
 
@@ -380,15 +404,49 @@ int CalFlowRate() {
 void CheckSensor() {
   if (digitalRead(SENSOR_PIN) == HIGH) {
     sensorCount++;
-    delay(50);
-    Serial.println(sensorCount);
+    // Serial.println(1);
+  } else {
+    // Serial.println(0);
   }
 }
 
-void ControlActuator(int reqRate) {
-}
+
 
 void InitPins() {
   pinMode(MORTOR_CLAMP_PIN, OUTPUT);
   pinMode(MORTOR_RELEASE_PIN, OUTPUT);
+}
+
+
+void Actuate(int reqRate) {
+  int err = reqRate - currentRate;
+  while (abs(err * Kp) > 255) {
+    if (Kp < 0.01) break;
+    Kp = Kp - 0.01;
+  }
+  int contSig = err * Kp;
+  Print("Control Sig: ", contSig);
+  MotorController(contSig);
+}
+
+// void InitController() {
+//   pidController.SetMode(AUTOMATIC);
+//   pidController.SetTunings(Kp, Ki, Kd);
+// }
+
+void Control() {
+  // InputSig = currentRate;
+  // refSig = requiredRate;
+
+  // pidController.Compute();
+}
+
+void MotorController(int contSig) {
+  if (contSig > 0) {
+    analogWrite(MORTOR_CLAMP_PIN, 255);
+    analogWrite(MORTOR_RELEASE_PIN, 0);
+  } else if (contSig < 0) {
+    analogWrite(MORTOR_RELEASE_PIN, 255);
+    analogWrite(MORTOR_CLAMP_PIN, 0);
+  }
 }
