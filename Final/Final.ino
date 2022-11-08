@@ -1,3 +1,5 @@
+#include <Key.h>
+#include <Keypad.h>
 #include <Keypad.h>
 #include <Arduino.h>
 #include <TM1637Display.h>
@@ -10,8 +12,10 @@
 #define FLASH_DELAY 100
 
 // Modes
-#define READING_MODE 0
-#define SETTING_MODE 1
+#define DROPSIZE_SETTING_MODE 0
+#define READING_MODE 1
+#define RATE_SETTING_MODE 2
+#define SENSING_DURATION 1
 
 
 //// Prototypes
@@ -27,15 +31,29 @@ void ClearDisplay();
 bool IsNumericChar(char character);
 void SaveDropSize(int val);
 void SaveRequiredRate(int val);
-
-
+void OnChangeMode(int currentOpState);
+void Print(const char* msg);
+void RecoverDropSize();
+void Print(const char* key, int value);
+void LogParameters();
+void RecoverRequiredRate();
+void SetDropSize();
+void OnTicking();
+int CalFlowRate();
+void CheckSensor();
 
 TM1637Display display(CLK, DIO);
 
-int confirmFlag = 0;
-int currentDisplayValue = 0;  // The value to be displayed always
-int opState = 0;
+int tempDisplayFlag = 0;
+int timerFlag = 0;
+
+int currentDisplayValue = NULL;  // The value to be displayed always
+int opState = 1;
 char customKey;
+int dropSize = NULL;  // No. of drops/ml
+int requiredRate = NULL;
+int currentRate = 28;
+int sensorCount = 0;
 
 //// Keypad Variables
 const byte ROWS = 4;
@@ -74,14 +92,48 @@ const uint8_t segAllDash[] = {
   SEG_G,  // -
   SEG_G   // -
 };
+// Create M1 symbol
+const uint8_t segM1[] = {
+  SEG_A | SEG_B | SEG_E | SEG_F,  // M_1
+  SEG_F | SEG_A | SEG_B | SEG_C,  // M_2
+  SEG_B | SEG_C                   //1
+};
 
 
 
 void setup() {
   Serial.begin(9600);
 
+  // Timer Interrupt
+  cli();
+
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 0;  //initialize counter value to 0
+
+  // set compare match registers
+  OCR1A = 15624;  // = (16*10^6) / (1*1024) - 1 (must be <65536)
+
+  // CTC mode
+  TCCR1B |= (1 << WGM12);
+
+  // 1024 prescaler
+  TCCR1B |= (1 << CS12) | (1 << CS10);
+
+  // enable timer compare interrupt
+  TIMSK1 |= (1 << OCIE1A);
+
+
+  sei();  //allow interrupts
+
+  /////////
+
   display.setBrightness(1);
   AllFlashDisplay();
+  RecoverDropSize();
+  RecoverRequiredRate();
+
+  LogParameters();
 }
 
 
@@ -91,22 +143,31 @@ void setup() {
 void loop() {
   customKey = CheckKeypress();
 
-  CheckOpState();
-
-
-
-
-  // Finally Display the value
-  if (currentDisplayValue == NULL) {
-    display.setSegments(segAllDash);
-  } else {
-    display.showNumberDec(currentDisplayValue);
+  if (timerFlag) {
+    OnTicking();
+    timerFlag = 0;
   }
+
+  CheckOpState();
+  CheckSensor();
 }
 
+//ISR
+
+ISR(TIMER1_COMPA_vect) {
+  //timer1 interrupt 1Hz
+  timerFlag = 1;
+}
+
+////
 
 
 void AppendToDisplay(uint8_t digit) {
+  if (tempDisplayFlag) {
+    currentDisplayValue = NULL;
+    tempDisplayFlag = 0;
+  }
+
   if (currentDisplayValue == 0) {
     currentDisplayValue = digit;
   } else {
@@ -118,7 +179,6 @@ void AppendToDisplay(uint8_t digit) {
     String digitStr = String(digit);
     currentDisplayValStr.concat(digitStr);
     currentDisplayValue = currentDisplayValStr.toInt();
-    Serial.println(currentDisplayValue);
   }
 }
 
@@ -133,19 +193,22 @@ int CharToAsciiInt(char val) {
 char CheckKeypress() {
   char customKey = customKeypad.getKey();
   if (customKey == 'D') {
-    confirmFlag = 1;
     ChangeMode();
+  } else if (customKey == 'A') {
+    SetDropSize();
   }
   return customKey;
 }
 
 // On Confirming Input
 void ChangeMode() {
-  if (opState < 1) {
+  int prevOpState = opState;
+  if (opState < 2) {
     opState++;
   } else {
-    opState = 0;
+    opState = 1;
   }
+  OnChangeMode(prevOpState);
   ClearDisplay();
 }
 
@@ -173,6 +236,7 @@ void ZeroSlowFlashDisplay() {
 
 void ClearDisplay() {
   currentDisplayValue = NULL;
+  delay(250);
 }
 
 bool IsNumericChar(char character) {
@@ -184,27 +248,128 @@ bool IsNumericChar(char character) {
 
 
 void CheckOpState() {
+
+  // check for recovered drop size
+  if (dropSize <= 0) {
+    opState = 0;
+  }
+
   switch (opState) {
-    case SETTING_MODE:
+    case DROPSIZE_SETTING_MODE:
+    case RATE_SETTING_MODE:
       if (customKey) {
-        Serial.println(customKey);
         if (IsNumericChar(customKey)) {
           AppendToDisplay(CharToAsciiInt(customKey));
         }
+      } else if (currentDisplayValue != NULL) {
+        display.showNumberDec(currentDisplayValue);
       }
       break;
 
     case READING_MODE:
+      display.showNumberDec(currentRate);
       break;
   }
 }
 
 // val <= 255
-void SaveDropSize(uint8_t size) {
+void SaveDropSize(int size) {
   EEPROM.put(0, size);
+  dropSize = size;
 }
 
 
-void SaveRequiredRate(float rate) {
-  EEPROM.put(1, rate);
+void SaveRequiredRate(int rate) {
+  EEPROM.put(4, rate);
+  requiredRate = rate;
+}
+
+// Callback on changing mode
+void OnChangeMode(int prevOpState) {
+  switch (prevOpState) {
+    case DROPSIZE_SETTING_MODE:
+      SaveDropSize(currentDisplayValue);
+      break;
+
+    case RATE_SETTING_MODE:
+      SaveRequiredRate(currentDisplayValue);
+      break;
+
+    case READING_MODE:
+      break;
+  }
+
+  switch (opState) {
+    case DROPSIZE_SETTING_MODE:
+      display.showNumberDec(dropSize);
+      break;
+
+    case RATE_SETTING_MODE:
+      if (requiredRate) {
+        display.showNumberDec(requiredRate);
+      } else {
+        display.setSegments(segAllDash);
+      }
+      tempDisplayFlag = 1;
+      break;
+
+    case READING_MODE:
+      break;
+  }
+  LogParameters();
+}
+
+void Print(const char* msg) {
+  Serial.println(msg);
+}
+
+void Print(const char* key, int value) {
+  Serial.print(key);
+  Serial.println(value);
+}
+
+void RecoverDropSize() {
+  EEPROM.get(0, dropSize);
+  Print("Drop Size loaded: ", dropSize);
+}
+
+void LogParameters() {
+  Print("Operating State: ", opState);
+  Print("Required Rate: ", requiredRate);
+  Print("Drop Size: ", dropSize);
+}
+
+void RecoverRequiredRate() {
+  EEPROM.get(4, requiredRate);
+  Print("Required Rate loaded: ", requiredRate);
+}
+
+void SetDropSize() {
+  if (opState == 0) {
+    ChangeMode();
+    return;
+  }
+  opState = 0;
+  currentDisplayValue = dropSize;
+  tempDisplayFlag = 1;
+  Print("Operating Mode: ", opState);
+}
+
+void OnTicking() {
+  CalFlowRate();
+  sensorCount = 0;  // Reset counter for sensor inputs
+}
+
+int CalFlowRate() {
+  int qty = sensorCount * dropSize;   // Flown amount in ml
+  int rate = qty / SENSING_DURATION;  // flow rate
+
+  return (rate);
+}
+
+void CheckSensor(){
+  if(digitalRead(12)== HIGH){
+    sensorCount++;
+    delay(50);
+  }  
 }
